@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Loader2 } from 'lucide-react';
 import { Button, Field, Input } from './ui';
 
 interface LoginProps {
@@ -9,6 +9,7 @@ interface LoginProps {
   setLoginPassword: (value: string) => void;
   loginError: string;
   onSubmit: (event: React.FormEvent) => void;
+  isLoading?: boolean;
 }
 
 export function LoginScreen(props: LoginProps) {
@@ -62,7 +63,16 @@ export function LoginScreen(props: LoginProps) {
 
             {props.loginError ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{props.loginError}</div> : null}
 
-            <Button type="submit" variant="primary" className="w-full py-2.5">Sign In</Button>
+            <Button type="submit" variant="primary" className="w-full py-2.5" disabled={props.isLoading}>
+              {props.isLoading ? (
+                <>
+                  <Loader2 size={16} className="mr-2 inline-block animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                'Sign In'
+              )}
+            </Button>
           </form>
 
           <div className="mt-6 border-t border-slate-200 pt-4 text-center text-xs text-slate-500">

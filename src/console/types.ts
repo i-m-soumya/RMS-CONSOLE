@@ -213,6 +213,13 @@ export interface AuthSession {
   access: AccessMode;
   role: Role;
   restaurantSlug?: string;
+  email: string;
+  name: string;
+  token: string;
+  refreshToken: string;
+  permissions: string[];
+  restaurantId?: string;
+  expiresAt: number;
 }
 
 export interface StoredState {

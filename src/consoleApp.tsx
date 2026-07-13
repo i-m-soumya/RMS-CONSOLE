@@ -39,8 +39,10 @@ import type {
   Restaurant,
   StoredState,
   ViewId,
+  AuthSession,
 } from './console/types';
 import { Button, Pill } from './console/components/ui';
+import { authApiClient } from './console/authApi';
 
 function useConsoleState() {
   const stored = useMemo(loadStoredState, []);
@@ -61,12 +63,41 @@ export default function ConsoleApp() {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isBootingAuth, setIsBootingAuth] = useState(true);
 
   const auth = state.auth;
   const currentUser = auth ? state.data.users.find((user) => user.id === auth.userId) ?? null : null;
   const currentRestaurant = auth?.restaurantSlug ? state.data.restaurants.find((restaurant) => restaurant.slug === auth.restaurantSlug) ?? null : null;
   const currentNotifications = state.data.notifications.filter((notification) => notification.scope === auth?.access && (!notification.restaurantSlug || notification.restaurantSlug === auth.restaurantSlug));
   const unreadCount = currentNotifications.filter((notification) => notification.unread).length;
+
+  // Bootstrap auth on app load
+  useEffect(() => {
+    const bootAuth = async () => {
+      const session = authApiClient.getSession();
+      if (session && (await authApiClient.validateSession())) {
+        // Valid JWT found in storage - hydrate into app state
+        const authSession: AuthSession = {
+          userId: session.user.id,
+          access: session.user.role === 'platform_admin' ? 'platform' : 'restaurant',
+          role: session.user.role === 'platform_admin' ? 'platform' : (session.user.role as 'admin' | 'waiter' | 'chef'),
+          email: session.user.email,
+          name: session.user.name,
+          token: session.token,
+          refreshToken: session.refreshToken,
+          permissions: session.user.permissions,
+          restaurantId: session.user.restaurantId,
+          restaurantSlug: session.user.restaurantSlug,
+          expiresAt: session.expiresAt,
+        };
+        setState((prev) => ({ ...prev, auth: authSession }));
+        setView('dashboard');
+      }
+      setIsBootingAuth(false);
+    };
+    bootAuth();
+  }, [setState]);
 
   const restaurantNav: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -109,6 +140,28 @@ export default function ConsoleApp() {
     return restaurantNav.filter((item) => ['dashboard', 'tables', 'orders', 'billing', 'menu', 'staff', 'reports', 'settings', 'notifications'].includes(item.id));
   }, [auth]);
 
+  // Get permitted view IDs for current role
+  function getPermittedViews(authSession: AuthSession | null): ViewId[] {
+    if (!authSession) return [];
+    if (authSession.access === 'platform') {
+      return ['dashboard', 'restaurants', 'change-requests', 'qr-codes', 'contacts', 'registrations', 'analytics', 'settings'];
+    }
+
+    if (authSession.role === 'chef') {
+      return ['dashboard', 'kitchen', 'availability', 'shift-history', 'notifications'];
+    }
+
+    if (authSession.role === 'waiter') {
+      return ['dashboard', 'tables', 'orders', 'billing', 'notifications'];
+    }
+
+    // admin
+    return ['dashboard', 'tables', 'orders', 'billing', 'menu', 'staff', 'reports', 'settings', 'notifications'];
+  }
+
+  // Guard view access - redirect to dashboard if disallowed
+  const guardedView = auth && !getPermittedViews(auth).includes(view) ? 'dashboard' : view;
+
   useEffect(() => {
     if (!auth) return;
     setView('dashboard');
@@ -149,66 +202,56 @@ export default function ConsoleApp() {
   function login(event: React.FormEvent) {
     event.preventDefault();
     setLoginError('');
+    setIsLoading(true);
 
-    const user = state.data.users.find(
-      (candidate) =>
-        candidate.email.toLowerCase() === loginEmail.trim().toLowerCase(),
-    );
+    authApiClient
+      .login({ email: loginEmail.trim(), password: loginPassword })
+      .then((response) => {
+        // Transform backend response to frontend AuthSession
+        const authSession: AuthSession = {
+          userId: response.user.id,
+          access: response.user.role === 'platform_admin' ? 'platform' : 'restaurant',
+          role: response.user.role === 'platform_admin' ? 'platform' : (response.user.role as 'admin' | 'waiter' | 'chef'),
+          email: response.user.email,
+          name: response.user.name,
+          token: response.token,
+          refreshToken: response.refreshToken,
+          permissions: response.user.permissions,
+          restaurantId: response.user.restaurantId,
+          restaurantSlug: response.user.restaurantSlug,
+          expiresAt: Date.now() + 15 * 60 * 1000,
+        };
 
-    if (!user) {
-      setLoginError('No account found for this email.');
-      return;
-    }
+        setState((previous) => ({
+          ...previous,
+          auth: authSession,
+        }));
 
-    if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
-      setLoginError('Account is locked after failed attempts. Try again later.');
-      return;
-    }
+        setLoginPassword('');
+        setLoginEmail('');
 
-    if (user.password !== loginPassword) {
-      setState((previous) => ({
-        ...previous,
-        data: {
-          ...previous.data,
-          users: previous.data.users.map((candidate) => {
-            if (candidate.id !== user.id) return candidate;
-            const failedAttempts = candidate.failedAttempts + 1;
-            return {
-              ...candidate,
-              failedAttempts,
-              lockedUntil: failedAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : candidate.lockedUntil ?? null,
-            };
-          }),
-        },
-      }));
-      setLoginError('Incorrect password. After five failures the account locks briefly.');
-      return;
-    }
-
-    setState((previous) => ({
-      auth: {
-        userId: user.id,
-        access: user.access,
-        role: user.role,
-        restaurantSlug: user.restaurantSlug,
-      },
-      data: {
-        ...previous.data,
-        users: previous.data.users.map((candidate) =>
-          candidate.id === user.id
-            ? { ...candidate, failedAttempts: 0, lockedUntil: null, lastLoginAt: new Date().toISOString() }
-            : candidate,
-        ),
-      },
-    }));
-
-    setLoginPassword('');
+        // Redirect to appropriate landing view based on role
+        if (authSession.access === 'platform') {
+          setView('dashboard');
+        } else {
+          setView('dashboard');
+        }
+      })
+      .catch((error) => {
+        setLoginError(error.message || 'Login failed. Please check your credentials and try again.');
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
   }
 
   function logout() {
+    authApiClient.logout();
     setState((previous) => ({ ...previous, auth: null }));
     setView('dashboard');
     setNotificationsOpen(false);
+    setLoginEmail('');
+    setLoginPassword('');
   }
 
   function toggleRestaurantStatus(slug: string) {
@@ -334,6 +377,19 @@ export default function ConsoleApp() {
     }));
   }
 
+  if (isBootingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="inline-block animate-pulse">
+            <div className="h-10 w-10 bg-blue-600 rounded-lg" />
+          </div>
+          <p className="mt-4 text-slate-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!auth) {
     return (
       <LoginScreen
@@ -343,6 +399,7 @@ export default function ConsoleApp() {
         setLoginPassword={setLoginPassword}
         loginError={loginError}
         onSubmit={login}
+        isLoading={isLoading}
       />
     );
   }
@@ -357,14 +414,14 @@ export default function ConsoleApp() {
         subtitle={shellSubtitle}
         unreadCount={unreadCount}
         navItems={navItems}
-        active={view}
+        active={guardedView}
         onSelect={setView}
         onLogout={logout}
         onOpenNotifications={() => setNotificationsOpen(true)}
       >
         {auth.access === 'platform' ? (
           <PlatformViews
-            view={view}
+            view={guardedView}
             state={state.data}
             unreadCount={unreadCount}
             onOpenRestaurant={() => {}}
@@ -374,7 +431,7 @@ export default function ConsoleApp() {
           />
         ) : currentRestaurant ? (
           <RestaurantViews
-            view={view}
+            view={guardedView}
             role={auth.role}
             restaurant={currentRestaurant}
             notifications={currentNotifications}

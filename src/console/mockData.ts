@@ -183,12 +183,7 @@ export function seedAppState(): AppState {
 
   return {
     restaurants,
-    users: [
-      { id: makeId('user'), name: 'Platform Admin', email: 'platform@console.local', password: 'Admin123!', role: 'platform', access: 'platform', failedAttempts: 0 },
-      { id: makeId('user'), name: 'Burger Admin', email: 'admin@burger-co.local', password: 'Admin123!', role: 'admin', access: 'restaurant', restaurantSlug: 'burger-co', failedAttempts: 0 },
-      { id: makeId('user'), name: 'Burger Waiter', email: 'waiter@burger-co.local', password: 'Waiter123!', role: 'waiter', access: 'restaurant', restaurantSlug: 'burger-co', failedAttempts: 0 },
-      { id: makeId('user'), name: 'Burger Chef', email: 'chef@burger-co.local', password: 'Chef123!', role: 'chef', access: 'restaurant', restaurantSlug: 'burger-co', failedAttempts: 0 },
-    ],
+    users: [], // Authentication now handled by backend JWT; users array is deprecated
     notifications: [
       { id: makeId('note'), scope: 'restaurant', restaurantSlug: 'burger-co', message: 'New order from table 1 is pending confirmation.', unread: true, createdAt: '2026-07-11T06:20:00Z' },
       { id: makeId('note'), scope: 'platform', message: 'Sushi House has been suspended from the platform.', unread: true, createdAt: '2026-07-10T10:30:00Z' },

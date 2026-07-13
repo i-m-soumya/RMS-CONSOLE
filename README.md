@@ -1,63 +1,110 @@
-# React + TypeScript + Vite
+# RMS Console
 
-## Netlify Deployment
+Multi-tenant restaurant management system console for platform admins, restaurant admins, waiters, and chefs.
+
+## Setup
+
+### Prerequisites
+
+- Node.js 16+
+- Backend API running (see VITE_API_URL below)
+
+### Installation
+
+```bash
+npm install
+```
+
+### Environment Configuration
+
+Create a `.env` file in the project root (copy from `.env.example`):
+
+```env
+# Backend API root URL
+# For local development: http://localhost:5000
+# For production: https://rms-backend-production-e1d3.up.railway.app
+VITE_API_URL=https://rms-backend-production-e1d3.up.railway.app
+```
+
+The backend API URL is used for all authentication and data API calls. Ensure the backend service is running and accessible at this URL.
+
+## Development
+
+```bash
+npm run dev
+```
+
+Starts a local Vite dev server with HMR at `http://localhost:5173`.
+
+## Authentication
+
+The console uses JWT-based authentication against the backend API.
+
+### Login Flow
+
+1. User enters email and password on login screen.
+2. Frontend calls `POST /api/auth/console-login` with credentials.
+3. Backend validates credentials and returns JWT token + user profile.
+4. Frontend stores JWT in localStorage and bootstraps app state.
+5. Subsequent requests include JWT in `Authorization: Bearer <token>` header.
+6. On app reload, frontend validates stored JWT with backend (refresh if needed).
+
+### User Roles
+
+- **Platform Admin**: Full access to all restaurants and platform settings.
+- **Restaurant Admin**: Full access to their assigned restaurant.
+- **Waiter**: Access to tables, orders, billing, and notifications.
+- **Chef**: Access to kitchen display, availability, and shift history.
+
+### JWT Claims
+
+The JWT token includes:
+- `id`: User ID (UUID)
+- `name`: User name
+- `email`: User email
+- `role`: One of `platform_admin`, `restaurant_admin`, `waiter`, `chef`
+- `permissions`: Array of permission strings (e.g., `['menu:read', 'order:create']`)
+- `restaurantId`: Restaurant UUID (for non-platform users only)
+- `restaurantSlug`: Restaurant slug (for non-platform users only)
+
+## Build
+
+```bash
+npm run build
+```
+
+Generates optimized production build in `dist/` directory.
+
+## Deployment
+
+### Netlify
 
 This project must be deployed from the built output, not source files.
 
 - Build command: `npm run build`
 - Publish directory: `dist`
 
-If Netlify serves `index.html` from the source folder, the browser will try to load `/src/*.tsx` as module scripts and fail with a MIME type error (`application/octet-stream`).
+Update environment variables in Netlify dashboard:
+- `VITE_API_URL`: Set to your production backend URL
 
-This repository includes `netlify.toml` with the correct settings.
+## Project Structure
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
 ```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
+src/
+  consoleApp.tsx          - Main app entry point with auth and routing
+  console/
+    authApi.ts            - Backend auth API client and token management
+    types.ts              - TypeScript types and interfaces
+    mockData.ts           - Demo restaurant/notification data
+    components/
+      LoginScreen.tsx     - Login form UI
+      AppFrame.tsx        - Main navigation shell
+      views/
+        PlatformViews.tsx - Platform admin screens
+        RestaurantViews.tsx - Restaurant user screens
+        platform/         - Platform admin screen components
+        restaurant/       - Restaurant screen components
+```
 import reactX from 'eslint-plugin-react-x'
 import reactDom from 'eslint-plugin-react-dom'
 
