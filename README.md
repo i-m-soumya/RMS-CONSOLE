@@ -1,5 +1,16 @@
 # React + TypeScript + Vite
 
+## Netlify Deployment
+
+This project must be deployed from the built output, not source files.
+
+- Build command: `npm run build`
+- Publish directory: `dist`
+
+If Netlify serves `index.html` from the source folder, the browser will try to load `/src/*.tsx` as module scripts and fail with a MIME type error (`application/octet-stream`).
+
+This repository includes `netlify.toml` with the correct settings.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

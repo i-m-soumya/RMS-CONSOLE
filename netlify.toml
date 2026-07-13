@@ -1,0 +1,14 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Optional route aliases for cleaner URLs.
+[[redirects]]
+  from = "/platform"
+  to = "/platform.html"
+  status = 200
+
+[[redirects]]
+  from = "/restaurant"
+  to = "/restaurant.html"
+  status = 200
