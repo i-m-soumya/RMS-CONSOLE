@@ -23,11 +23,12 @@ interface RestaurantViewsProps {
   onRejectOrder: (orderId: string) => void;
   onMarkBillPaid: (billId: string) => void;
   onToggleItemAvailability: (itemId: string) => void;
+  onNavigate: (view: ViewId) => void;
 }
 
 export function RestaurantViews(props: RestaurantViewsProps) {
   if (props.view === 'dashboard') {
-    return <RestaurantDashboardScreen role={props.role} restaurant={props.restaurant} />;
+    return <RestaurantDashboardScreen role={props.role} restaurant={props.restaurant} onNavigate={props.onNavigate} />;
   }
 
   if (props.view === 'tables') {

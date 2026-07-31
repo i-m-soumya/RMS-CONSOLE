@@ -9,15 +9,24 @@ interface PlatformViewsProps {
   view: ViewId;
   state: AppState;
   unreadCount: number;
-  onOpenRestaurant: (slug: string) => void;
+  onOpenRestaurant: (restaurantId: string) => void;
   onToggleRestaurantStatus: (slug: string) => void;
   onApproveRequest: (restaurantSlug: string, requestId: string) => void;
   onRejectRequest: (restaurantSlug: string, requestId: string) => void;
+  onNavigate: (view: ViewId) => void;
+  onOpenNotifications: () => void;
 }
 
 export function PlatformViews(props: PlatformViewsProps) {
   if (props.view === 'dashboard') {
-    return <PlatformDashboardScreen state={props.state} unreadCount={props.unreadCount} />;
+    return (
+      <PlatformDashboardScreen
+        state={props.state}
+        unreadCount={props.unreadCount}
+        onNavigate={props.onNavigate}
+        onOpenNotifications={props.onOpenNotifications}
+      />
+    );
   }
 
   if (props.view === 'restaurants') {

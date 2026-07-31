@@ -5,12 +5,38 @@ import {
   type OnboardBasicDetailsPayload,
   type PlatformRestaurantListItem,
   type TableQrArtifact,
+  type UpdateRestaurantBasicDetailsPayload,
 } from '../../../authApi';
 import { formatClock } from '../../../mockData';
 import { ModalShell } from '../../ModalShell';
 import { DataTable } from '../../DataTable';
 import { Button, Card, CardHeader, Field, Input, Pill, Select } from '../../ui';
 import type { PlatformScreenProps } from './types';
+
+type OnboardingFormState = {
+  basic: OnboardBasicDetailsPayload;
+  floors: FloorInput[];
+  adminName: string;
+  adminEmail: string;
+};
+
+function defaultOnboardingForm(): OnboardingFormState {
+  return {
+    basic: {
+      name: '',
+      slug: '',
+      address: '',
+      city: '',
+      state: '',
+      pincode: '',
+      timezone: 'Asia/Kolkata',
+      contactEmail: '',
+    },
+    floors: [{ name: 'Ground Floor', tables: [{ tableNumber: '1', capacity: 4 }] }],
+    adminName: '',
+    adminEmail: '',
+  };
+}
 
 export function PlatformRestaurantsScreen({ state, onOpenRestaurant, onToggleRestaurantStatus }: Pick<PlatformScreenProps, 'state' | 'onOpenRestaurant' | 'onToggleRestaurantStatus'>) {
   const [restaurants, setRestaurants] = useState<PlatformRestaurantListItem[]>([]);
@@ -22,30 +48,24 @@ export function PlatformRestaurantsScreen({ state, onOpenRestaurant, onToggleRes
   const [cityFilter, setCityFilter] = useState('');
 
   const [onboardOpen, setOnboardOpen] = useState(false);
-  const [onboardStep, setOnboardStep] = useState<1 | 5 | 6 | 7>(1);
+  const [onboardForm, setOnboardForm] = useState<OnboardingFormState>(() => defaultOnboardingForm());
   const [busyAction, setBusyAction] = useState(false);
   const [onboardError, setOnboardError] = useState('');
   const [onboardSuccess, setOnboardSuccess] = useState('');
+  const [onboardAdminResult, setOnboardAdminResult] = useState('');
 
-  const [basicDetails, setBasicDetails] = useState<OnboardBasicDetailsPayload>({
-    name: '',
-    slug: '',
-    address: '',
-    city: '',
-    state: '',
-    pincode: '',
-    timezone: 'Asia/Kolkata',
-    contactEmail: '',
-  });
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsRestaurant, setDetailsRestaurant] = useState<PlatformRestaurantListItem | null>(null);
+  const [detailsOriginal, setDetailsOriginal] = useState<OnboardBasicDetailsPayload | null>(null);
+  const [detailsForm, setDetailsForm] = useState<OnboardBasicDetailsPayload | null>(null);
+  const [detailsEditMode, setDetailsEditMode] = useState(false);
+  const [detailsBusy, setDetailsBusy] = useState(false);
+  const [detailsError, setDetailsError] = useState('');
+  const [detailsSuccess, setDetailsSuccess] = useState('');
+  const [detailsQrItems, setDetailsQrItems] = useState<TableQrArtifact[]>([]);
 
-  const [draftRestaurant, setDraftRestaurant] = useState<{ id: string; name: string; slug: string } | null>(null);
-  const [floors, setFloors] = useState<FloorInput[]>([
-    { name: 'Ground Floor', tables: [{ tableNumber: '1', capacity: 4 }] },
-  ]);
-  const [qrItems, setQrItems] = useState<TableQrArtifact[]>([]);
-  const [adminName, setAdminName] = useState('');
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminResult, setAdminResult] = useState('');
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, 'active' | 'suspended'>>({});
+  const [statusBusySlug, setStatusBusySlug] = useState('');
 
   const fallbackRows = useMemo(
     () =>
@@ -58,11 +78,23 @@ export function PlatformRestaurantsScreen({ state, onOpenRestaurant, onToggleRes
         onboardedAt: restaurant.onboardedAt,
         city: restaurant.city,
         timezone: restaurant.timezone,
+        state: '',
+        pincode: '',
+        address: '',
       })),
     [state.restaurants],
   );
 
   const sourceRows = restaurants.length > 0 ? restaurants : fallbackRows;
+
+  const rowsWithStatus = useMemo(
+    () =>
+      sourceRows.map((row) => ({
+        ...row,
+        status: statusOverrides[row.slug] ?? row.status,
+      })),
+    [sourceRows, statusOverrides],
+  );
 
   const loadRestaurants = useCallback(async () => {
     setIsLoading(true);
@@ -101,26 +133,11 @@ export function PlatformRestaurantsScreen({ state, onOpenRestaurant, onToggleRes
   }
 
   function resetOnboarding() {
-    setOnboardStep(1);
+    setOnboardForm(defaultOnboardingForm());
     setBusyAction(false);
     setOnboardError('');
     setOnboardSuccess('');
-    setDraftRestaurant(null);
-    setFloors([{ name: 'Ground Floor', tables: [{ tableNumber: '1', capacity: 4 }] }]);
-    setQrItems([]);
-    setAdminName('');
-    setAdminEmail('');
-    setAdminResult('');
-    setBasicDetails({
-      name: '',
-      slug: '',
-      address: '',
-      city: '',
-      state: '',
-      pincode: '',
-      timezone: 'Asia/Kolkata',
-      contactEmail: '',
-    });
+    setOnboardAdminResult('');
   }
 
   function openOnboarding() {
@@ -132,43 +149,31 @@ export function PlatformRestaurantsScreen({ state, onOpenRestaurant, onToggleRes
     setOnboardOpen(false);
   }
 
-  async function submitBasicDetails(event: React.FormEvent) {
-    event.preventDefault();
-    setBusyAction(true);
-    setOnboardError('');
-    setOnboardSuccess('');
-
-    try {
-      const created = await authApiClient.createRestaurantBasicDetails({
-        ...basicDetails,
-        slug: slugify(basicDetails.slug || basicDetails.name),
-      });
-      setDraftRestaurant(created);
-      setOnboardStep(5);
-      setOnboardSuccess('Step 1 completed. Basic details saved.');
-      await loadRestaurants();
-    } catch (apiError) {
-      setOnboardError(apiError instanceof Error ? apiError.message : 'Failed to save basic details.');
-    } finally {
-      setBusyAction(false);
-    }
-  }
-
   function addFloor() {
-    setFloors((previous) => [...previous, { name: `Floor ${previous.length + 1}`, tables: [{ tableNumber: '1', capacity: 4 }] }]);
+    setOnboardForm((previous) => ({
+      ...previous,
+      floors: [...previous.floors, { name: `Floor ${previous.floors.length + 1}`, tables: [{ tableNumber: '1', capacity: 4 }] }],
+    }));
   }
 
   function removeFloor(index: number) {
-    setFloors((previous) => previous.filter((_, floorIndex) => floorIndex !== index));
+    setOnboardForm((previous) => ({
+      ...previous,
+      floors: previous.floors.filter((_, floorIndex) => floorIndex !== index),
+    }));
   }
 
   function updateFloorName(index: number, name: string) {
-    setFloors((previous) => previous.map((floor, floorIndex) => (floorIndex === index ? { ...floor, name } : floor)));
+    setOnboardForm((previous) => ({
+      ...previous,
+      floors: previous.floors.map((floor, floorIndex) => (floorIndex === index ? { ...floor, name } : floor)),
+    }));
   }
 
   function addTable(floorIndex: number) {
-    setFloors((previous) =>
-      previous.map((floor, idx) =>
+    setOnboardForm((previous) => ({
+      ...previous,
+      floors: previous.floors.map((floor, idx) =>
         idx === floorIndex
           ? {
               ...floor,
@@ -176,12 +181,13 @@ export function PlatformRestaurantsScreen({ state, onOpenRestaurant, onToggleRes
             }
           : floor,
       ),
-    );
+    }));
   }
 
   function removeTable(floorIndex: number, tableIndex: number) {
-    setFloors((previous) =>
-      previous.map((floor, idx) =>
+    setOnboardForm((previous) => ({
+      ...previous,
+      floors: previous.floors.map((floor, idx) =>
         idx === floorIndex
           ? {
               ...floor,
@@ -189,12 +195,13 @@ export function PlatformRestaurantsScreen({ state, onOpenRestaurant, onToggleRes
             }
           : floor,
       ),
-    );
+    }));
   }
 
   function updateTable(floorIndex: number, tableIndex: number, key: 'tableNumber' | 'capacity', value: string) {
-    setFloors((previous) =>
-      previous.map((floor, idx) => {
+    setOnboardForm((previous) => ({
+      ...previous,
+      floors: previous.floors.map((floor, idx) => {
         if (idx !== floorIndex) return floor;
         return {
           ...floor,
@@ -207,39 +214,39 @@ export function PlatformRestaurantsScreen({ state, onOpenRestaurant, onToggleRes
           }),
         };
       }),
-    );
+    }));
   }
 
-  async function submitFloorsAndTables() {
-    if (!draftRestaurant) return;
+  async function submitOnboarding(event: React.FormEvent) {
+    event.preventDefault();
     setBusyAction(true);
     setOnboardError('');
     setOnboardSuccess('');
+    setOnboardAdminResult('');
 
     try {
-      await authApiClient.saveFloorsAndTables(draftRestaurant.id, floors);
-      setOnboardStep(6);
-      setOnboardSuccess('Step 5 completed. Floors and tables saved.');
+      const normalizedSlug = slugify(onboardForm.basic.slug || onboardForm.basic.name);
+      const created = await authApiClient.createRestaurantBasicDetails({
+        ...onboardForm.basic,
+        slug: normalizedSlug,
+      });
+
+      await authApiClient.saveFloorsAndTables(created.id, onboardForm.floors);
+
+      const adminResponse = await authApiClient.createRestaurantAdminCredentials(created.id, {
+        name: onboardForm.adminName,
+        email: onboardForm.adminEmail,
+      });
+
+      setOnboardAdminResult(`Temp password: ${adminResponse.tempPassword}`);
+      setOnboardSuccess(
+        adminResponse.emailDelivery.sent
+          ? 'Restaurant created. Floors, tables, and admin credentials are complete.'
+          : 'Restaurant and admin created, but admin credential email delivery needs retry.',
+      );
       await loadRestaurants();
     } catch (apiError) {
-      setOnboardError(apiError instanceof Error ? apiError.message : 'Failed to save floors and tables.');
-    } finally {
-      setBusyAction(false);
-    }
-  }
-
-  async function generateQRCodes() {
-    if (!draftRestaurant) return;
-    setBusyAction(true);
-    setOnboardError('');
-    setOnboardSuccess('');
-
-    try {
-      const items = await authApiClient.generateRestaurantQRCodes(draftRestaurant.id);
-      setQrItems(items);
-      setOnboardSuccess('Step 6 completed. QR codes generated for all tables.');
-    } catch (apiError) {
-      setOnboardError(apiError instanceof Error ? apiError.message : 'Failed to generate QR codes.');
+      setOnboardError(apiError instanceof Error ? apiError.message : 'Failed to onboard restaurant.');
     } finally {
       setBusyAction(false);
     }
@@ -252,53 +259,148 @@ export function PlatformRestaurantsScreen({ state, onOpenRestaurant, onToggleRes
     anchor.click();
   }
 
-  async function downloadQrBatch() {
-    if (!draftRestaurant) return;
-    setBusyAction(true);
-    setOnboardError('');
-    setOnboardSuccess('');
+  function openRestaurantDetails(restaurant: PlatformRestaurantListItem) {
+    const localRestaurant = state.restaurants.find((entry) => entry.slug === restaurant.slug);
+    const original: OnboardBasicDetailsPayload = {
+      name: restaurant.name,
+      slug: restaurant.slug,
+      address: restaurant.address || localRestaurant?.registeredAddress || '',
+      city: restaurant.city || localRestaurant?.city || '',
+      state: restaurant.state || '',
+      pincode: restaurant.pincode || '',
+      timezone: restaurant.timezone || localRestaurant?.timezone || 'Asia/Kolkata',
+      contactEmail: localRestaurant?.contactEmail || '',
+    };
+
+    setDetailsRestaurant({ ...restaurant, status: statusOverrides[restaurant.slug] ?? restaurant.status });
+    setDetailsOriginal(original);
+    setDetailsForm(original);
+    setDetailsEditMode(false);
+    setDetailsQrItems([]);
+    setDetailsError('');
+    setDetailsSuccess('');
+    setDetailsOpen(true);
+    onOpenRestaurant(restaurant.id);
+  }
+
+  function closeRestaurantDetails() {
+    setDetailsOpen(false);
+  }
+
+  async function saveRestaurantDetails(event: React.FormEvent) {
+    event.preventDefault();
+    if (!detailsRestaurant || !detailsForm || !detailsOriginal) return;
+
+    const payload: UpdateRestaurantBasicDetailsPayload = {};
+    const normalizedDraft: OnboardBasicDetailsPayload = {
+      ...detailsForm,
+      slug: slugify(detailsForm.slug || detailsForm.name),
+      contactEmail: detailsForm.contactEmail?.trim() || undefined,
+    };
+
+    const fields: Array<keyof OnboardBasicDetailsPayload> = ['name', 'slug', 'address', 'city', 'state', 'pincode', 'timezone', 'contactEmail'];
+    fields.forEach((field) => {
+      const nextValue = (normalizedDraft[field] || '').trim();
+      const previousValue = (detailsOriginal[field] || '').trim();
+      if (nextValue !== previousValue && nextValue.length > 0) {
+        payload[field] = nextValue;
+      }
+    });
+
+    if (Object.keys(payload).length === 0) {
+      setDetailsSuccess('No changes to save.');
+      setDetailsEditMode(false);
+      return;
+    }
+
+    setDetailsBusy(true);
+    setDetailsError('');
+    setDetailsSuccess('');
 
     try {
-      const zipResult = await authApiClient.downloadRestaurantQrBatchZip(draftRestaurant.id);
+      await authApiClient.updateRestaurantBasicDetails(detailsRestaurant.id, payload);
+
+      const updatedRow: PlatformRestaurantListItem = {
+        ...detailsRestaurant,
+        name: payload.name || detailsRestaurant.name,
+        slug: payload.slug || detailsRestaurant.slug,
+        address: payload.address || detailsRestaurant.address,
+        city: payload.city || detailsRestaurant.city,
+        state: payload.state || detailsRestaurant.state,
+        pincode: payload.pincode || detailsRestaurant.pincode,
+        timezone: payload.timezone || detailsRestaurant.timezone,
+      };
+
+      setRestaurants((previous) => previous.map((restaurant) => (restaurant.id === updatedRow.id ? updatedRow : restaurant)));
+      setDetailsRestaurant(updatedRow);
+      const merged = {
+        ...normalizedDraft,
+        ...payload,
+      };
+      setDetailsOriginal(merged);
+      setDetailsForm(merged);
+      setDetailsSuccess('Restaurant details updated successfully.');
+      setDetailsEditMode(false);
+      await loadRestaurants();
+    } catch (apiError) {
+      setDetailsError(apiError instanceof Error ? apiError.message : 'Failed to update restaurant details.');
+    } finally {
+      setDetailsBusy(false);
+    }
+  }
+
+  async function loadRestaurantQrs() {
+    if (!detailsRestaurant) return;
+    setDetailsBusy(true);
+    setDetailsError('');
+    setDetailsSuccess('');
+
+    try {
+      const items = await authApiClient.getRestaurantQrBatch(detailsRestaurant.id);
+      setDetailsQrItems(items);
+      setDetailsSuccess(items.length > 0 ? 'Table QR codes loaded.' : 'No table QR codes are available for this restaurant yet.');
+    } catch (apiError) {
+      setDetailsError(apiError instanceof Error ? apiError.message : 'Failed to load QR codes.');
+    } finally {
+      setDetailsBusy(false);
+    }
+  }
+
+  async function downloadQrBatch() {
+    if (!detailsRestaurant) return;
+    setDetailsBusy(true);
+    setDetailsError('');
+    setDetailsSuccess('');
+
+    try {
+      const zipResult = await authApiClient.downloadRestaurantQrBatchZip(detailsRestaurant.id);
       const objectUrl = window.URL.createObjectURL(zipResult.blob);
       const anchor = document.createElement('a');
       anchor.href = objectUrl;
       anchor.download = zipResult.filename;
       anchor.click();
       window.URL.revokeObjectURL(objectUrl);
-      setOnboardSuccess('ZIP download is ready for all table QR codes.');
-      setOnboardStep(7);
+      setDetailsSuccess('ZIP download is ready for all table QR codes.');
     } catch (apiError) {
-      setOnboardError(apiError instanceof Error ? apiError.message : 'Failed to download QR batch zip.');
+      setDetailsError(apiError instanceof Error ? apiError.message : 'Failed to download QR batch zip.');
     } finally {
-      setBusyAction(false);
+      setDetailsBusy(false);
     }
   }
 
-  async function createAdminCredentials(event: React.FormEvent) {
-    event.preventDefault();
-    if (!draftRestaurant) return;
-    setBusyAction(true);
-    setOnboardError('');
-    setOnboardSuccess('');
-    setAdminResult('');
+  async function handleToggleRestaurantStatus(restaurant: PlatformRestaurantListItem) {
+    const nextStatus = (statusOverrides[restaurant.slug] ?? restaurant.status) === 'active' ? 'suspended' : 'active';
+
+    setStatusBusySlug(restaurant.slug);
+    setStatusOverrides((previous) => ({ ...previous, [restaurant.slug]: nextStatus }));
 
     try {
-      const response = await authApiClient.createRestaurantAdminCredentials(draftRestaurant.id, {
-        name: adminName,
-        email: adminEmail,
-      });
-      setAdminResult(`Temp password: ${response.tempPassword}`);
-      setOnboardSuccess(response.emailDelivery.sent ? 'Step 7 completed. Admin account created and email sent.' : 'Admin created, but email delivery needs retry.');
-      await loadRestaurants();
-    } catch (apiError) {
-      setOnboardError(apiError instanceof Error ? apiError.message : 'Failed to create admin credentials.');
+      onToggleRestaurantStatus(restaurant.slug);
+      setRestaurants((previous) => previous.map((row) => (row.slug === restaurant.slug ? { ...row, status: nextStatus } : row)));
     } finally {
-      setBusyAction(false);
+      setStatusBusySlug('');
     }
   }
-
-  const stepLabel = onboardStep === 1 ? 'Step 1 · Basic Details' : onboardStep === 5 ? 'Step 5 · Floors & Tables' : onboardStep === 6 ? 'Step 6 · QR Generation' : 'Step 7 · Admin Credentials';
 
   return (
     <Card>
@@ -328,17 +430,21 @@ export function PlatformRestaurantsScreen({ state, onOpenRestaurant, onToggleRes
         {error ? <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
 
         <DataTable
-          columns={["Name", "Slug", "Status", "Tables", "Onboarded", "Actions"]}
-          rows={sourceRows.map((restaurant) => [
+          columns={['Name', 'Slug', 'Status', 'Tables', 'Onboarded', 'Actions']}
+          rows={rowsWithStatus.map((restaurant) => [
             <span key={`${restaurant.id}-name`} className="font-medium text-slate-900">{restaurant.name}</span>,
             <code key={`${restaurant.id}-slug`} className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-700">{restaurant.slug}</code>,
             <Pill key={`${restaurant.id}-status`} tone={restaurant.status}>{restaurant.status}</Pill>,
             <span key={`${restaurant.id}-tables`}>{restaurant.tableCount}</span>,
             <span key={`${restaurant.id}-date`}>{formatClock(restaurant.onboardedAt)}</span>,
             <div key={`${restaurant.id}-actions`} className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => onOpenRestaurant(restaurant.slug)}>Open</Button>
-              <Button variant={restaurant.status === 'active' ? 'danger' : 'primary'} onClick={() => onToggleRestaurantStatus(restaurant.slug)}>
-                {restaurant.status === 'active' ? 'Suspend' : 'Reactivate'}
+              <Button variant="secondary" onClick={() => openRestaurantDetails(restaurant)}>Open</Button>
+              <Button
+                variant={restaurant.status === 'active' ? 'danger' : 'primary'}
+                onClick={() => void handleToggleRestaurantStatus(restaurant)}
+                disabled={statusBusySlug === restaurant.slug}
+              >
+                {statusBusySlug === restaurant.slug ? 'Updating...' : restaurant.status === 'active' ? 'Suspend' : 'Reactivate'}
               </Button>
             </div>,
           ])}
@@ -346,81 +452,141 @@ export function PlatformRestaurantsScreen({ state, onOpenRestaurant, onToggleRes
       </div>
 
       {onboardOpen ? (
-        <ModalShell title="Onboard Restaurant" subtitle={stepLabel} onClose={closeOnboarding}>
-          <div className="mb-4 flex flex-wrap gap-2 text-xs">
-            {[1, 5, 6, 7].map((step) => (
-              <span
-                key={step}
-                className={`rounded-full border px-3 py-1 ${onboardStep === step ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
-              >
-                Step {step}
-              </span>
-            ))}
-          </div>
-
+        <ModalShell title="Onboard Restaurant" subtitle="Single-page onboarding: basic details, floors/tables, and admin credentials." onClose={closeOnboarding}>
           {onboardError ? <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{onboardError}</div> : null}
           {onboardSuccess ? <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{onboardSuccess}</div> : null}
+          {onboardAdminResult ? <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{onboardAdminResult}</div> : null}
 
-          {onboardStep === 1 ? (
-            <form className="grid grid-cols-1 gap-3 md:grid-cols-2" onSubmit={submitBasicDetails}>
-              <Field label="Restaurant Name"><Input value={basicDetails.name} onChange={(event) => setBasicDetails((previous) => ({ ...previous, name: event.target.value, slug: previous.slug || slugify(event.target.value) }))} required /></Field>
-              <Field label="Slug"><Input value={basicDetails.slug} onChange={(event) => setBasicDetails((previous) => ({ ...previous, slug: slugify(event.target.value) }))} required /></Field>
-              <Field label="Address" ><Input value={basicDetails.address} onChange={(event) => setBasicDetails((previous) => ({ ...previous, address: event.target.value }))} required /></Field>
-              <Field label="City"><Input value={basicDetails.city} onChange={(event) => setBasicDetails((previous) => ({ ...previous, city: event.target.value }))} required /></Field>
-              <Field label="State"><Input value={basicDetails.state} onChange={(event) => setBasicDetails((previous) => ({ ...previous, state: event.target.value }))} required /></Field>
-              <Field label="Pincode"><Input value={basicDetails.pincode} onChange={(event) => setBasicDetails((previous) => ({ ...previous, pincode: event.target.value }))} required /></Field>
-              <Field label="Timezone"><Input value={basicDetails.timezone} onChange={(event) => setBasicDetails((previous) => ({ ...previous, timezone: event.target.value }))} required /></Field>
-              <Field label="Contact Email"><Input type="email" value={basicDetails.contactEmail || ''} onChange={(event) => setBasicDetails((previous) => ({ ...previous, contactEmail: event.target.value }))} /></Field>
-              <div className="md:col-span-2 flex justify-end gap-2">
-                <Button type="button" variant="ghost" onClick={closeOnboarding}>Cancel</Button>
-                <Button type="submit" disabled={busyAction}>{busyAction ? 'Saving...' : 'Save & Continue'}</Button>
-              </div>
-            </form>
-          ) : null}
-
-          {onboardStep === 5 ? (
-            <div className="space-y-3">
-              {floors.map((floor, floorIndex) => (
-                <div key={floorIndex} className="rounded-2xl border border-slate-200 p-3">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <Input value={floor.name} onChange={(event) => updateFloorName(floorIndex, event.target.value)} placeholder="Floor or Zone name" />
-                    <Button type="button" variant="ghost" onClick={() => removeFloor(floorIndex)} disabled={floors.length === 1}>Remove Floor</Button>
-                  </div>
-                  <div className="space-y-2">
-                    {floor.tables.map((table, tableIndex) => (
-                      <div key={tableIndex} className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_130px_auto]">
-                        <Input value={table.tableNumber} onChange={(event) => updateTable(floorIndex, tableIndex, 'tableNumber', event.target.value)} placeholder="Table number" />
-                        <Input type="number" min={1} value={String(table.capacity)} onChange={(event) => updateTable(floorIndex, tableIndex, 'capacity', event.target.value)} placeholder="Capacity" />
-                        <Button type="button" variant="ghost" onClick={() => removeTable(floorIndex, tableIndex)} disabled={floor.tables.length === 1}>Remove</Button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2">
-                    <Button type="button" variant="secondary" onClick={() => addTable(floorIndex)}>Add Table</Button>
-                  </div>
-                </div>
-              ))}
-
-              <div className="flex flex-wrap justify-between gap-2">
-                <Button type="button" variant="secondary" onClick={addFloor}>Add Floor / Zone</Button>
-                <div className="flex gap-2">
-                  <Button type="button" variant="ghost" onClick={() => setOnboardStep(1)}>Back</Button>
-                  <Button type="button" onClick={submitFloorsAndTables} disabled={busyAction || !draftRestaurant}>{busyAction ? 'Saving...' : 'Save & Continue'}</Button>
-                </div>
+          <form className="space-y-4" onSubmit={submitOnboarding}>
+            <div className="rounded-2xl border border-slate-200 p-3">
+              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Basic Details</div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Field label="Restaurant Name"><Input value={onboardForm.basic.name} onChange={(event) => setOnboardForm((previous) => ({ ...previous, basic: { ...previous.basic, name: event.target.value, slug: previous.basic.slug || slugify(event.target.value) } }))} required /></Field>
+                <Field label="Slug"><Input value={onboardForm.basic.slug} onChange={(event) => setOnboardForm((previous) => ({ ...previous, basic: { ...previous.basic, slug: slugify(event.target.value) } }))} required /></Field>
+                <Field label="Address"><Input value={onboardForm.basic.address} onChange={(event) => setOnboardForm((previous) => ({ ...previous, basic: { ...previous.basic, address: event.target.value } }))} required /></Field>
+                <Field label="City"><Input value={onboardForm.basic.city} onChange={(event) => setOnboardForm((previous) => ({ ...previous, basic: { ...previous.basic, city: event.target.value } }))} required /></Field>
+                <Field label="State"><Input value={onboardForm.basic.state} onChange={(event) => setOnboardForm((previous) => ({ ...previous, basic: { ...previous.basic, state: event.target.value } }))} required /></Field>
+                <Field label="Pincode"><Input value={onboardForm.basic.pincode} onChange={(event) => setOnboardForm((previous) => ({ ...previous, basic: { ...previous.basic, pincode: event.target.value } }))} required /></Field>
+                <Field label="Timezone"><Input value={onboardForm.basic.timezone} onChange={(event) => setOnboardForm((previous) => ({ ...previous, basic: { ...previous.basic, timezone: event.target.value } }))} required /></Field>
+                <Field label="Contact Email"><Input type="email" value={onboardForm.basic.contactEmail || ''} onChange={(event) => setOnboardForm((previous) => ({ ...previous, basic: { ...previous.basic, contactEmail: event.target.value } }))} /></Field>
               </div>
             </div>
-          ) : null}
 
-          {onboardStep === 6 ? (
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" onClick={generateQRCodes} disabled={busyAction || !draftRestaurant}>{busyAction ? 'Generating...' : 'Generate QRs'}</Button>
-                <Button type="button" variant="secondary" onClick={downloadQrBatch} disabled={busyAction || !draftRestaurant}>Download Batch</Button>
-                <Button type="button" variant="ghost" onClick={() => setOnboardStep(5)}>Back</Button>
+            <div className="rounded-2xl border border-slate-200 p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Floors and Tables</div>
+                <Button type="button" variant="secondary" onClick={addFloor}>Add Floor / Zone</Button>
               </div>
 
+              <div className="space-y-3">
+                {onboardForm.floors.map((floor, floorIndex) => (
+                  <div key={floorIndex} className="rounded-2xl border border-slate-200 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <Input value={floor.name} onChange={(event) => updateFloorName(floorIndex, event.target.value)} placeholder="Floor or Zone name" />
+                      <Button type="button" variant="ghost" onClick={() => removeFloor(floorIndex)} disabled={onboardForm.floors.length === 1}>Remove Floor</Button>
+                    </div>
+                    <div className="space-y-2">
+                      {floor.tables.map((table, tableIndex) => (
+                        <div key={tableIndex} className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_130px_auto]">
+                          <Input value={table.tableNumber} onChange={(event) => updateTable(floorIndex, tableIndex, 'tableNumber', event.target.value)} placeholder="Table number" />
+                          <Input type="number" min={1} value={String(table.capacity)} onChange={(event) => updateTable(floorIndex, tableIndex, 'capacity', event.target.value)} placeholder="Capacity" />
+                          <Button type="button" variant="ghost" onClick={() => removeTable(floorIndex, tableIndex)} disabled={floor.tables.length === 1}>Remove</Button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2">
+                      <Button type="button" variant="secondary" onClick={() => addTable(floorIndex)}>Add Table</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 p-3">
+              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Admin Credentials</div>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {qrItems.map((item) => (
+                <Field label="Admin Name"><Input value={onboardForm.adminName} onChange={(event) => setOnboardForm((previous) => ({ ...previous, adminName: event.target.value }))} required /></Field>
+                <Field label="Admin Email"><Input type="email" value={onboardForm.adminEmail} onChange={(event) => setOnboardForm((previous) => ({ ...previous, adminEmail: event.target.value }))} required /></Field>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={closeOnboarding}>Close</Button>
+              <Button type="submit" disabled={busyAction}>{busyAction ? 'Saving...' : 'Create Restaurant'}</Button>
+            </div>
+          </form>
+        </ModalShell>
+      ) : null}
+
+      {detailsOpen && detailsRestaurant && detailsForm ? (
+        <ModalShell title={detailsRestaurant.name} subtitle="Restaurant details, edits, and QR downloads." onClose={closeRestaurantDetails}>
+          {detailsError ? <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{detailsError}</div> : null}
+          {detailsSuccess ? <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{detailsSuccess}</div> : null}
+
+          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Slug</div>
+              <div className="mt-1 font-medium text-slate-900">{detailsRestaurant.slug}</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Status</div>
+              <div className="mt-1"><Pill tone={detailsRestaurant.status}>{detailsRestaurant.status}</Pill></div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Tables</div>
+              <div className="mt-1 font-medium text-slate-900">{detailsRestaurant.tableCount}</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Onboarded</div>
+              <div className="mt-1 font-medium text-slate-900">{formatClock(detailsRestaurant.onboardedAt)}</div>
+            </div>
+          </div>
+
+          <form className="space-y-3" onSubmit={saveRestaurantDetails}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Basic Details</div>
+              {!detailsEditMode ? (
+                <Button type="button" variant="secondary" onClick={() => setDetailsEditMode(true)}>Edit</Button>
+              ) : (
+                <Button type="button" variant="ghost" onClick={() => {
+                  setDetailsForm(detailsOriginal);
+                  setDetailsEditMode(false);
+                }}>
+                  Cancel
+                </Button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Field label="Restaurant Name"><Input value={detailsForm.name} disabled={!detailsEditMode} onChange={(event) => setDetailsForm((previous) => previous ? { ...previous, name: event.target.value } : previous)} required /></Field>
+              <Field label="Slug"><Input value={detailsForm.slug} disabled={!detailsEditMode} onChange={(event) => setDetailsForm((previous) => previous ? { ...previous, slug: slugify(event.target.value) } : previous)} required /></Field>
+              <Field label="Address"><Input value={detailsForm.address} disabled={!detailsEditMode} onChange={(event) => setDetailsForm((previous) => previous ? { ...previous, address: event.target.value } : previous)} required /></Field>
+              <Field label="City"><Input value={detailsForm.city} disabled={!detailsEditMode} onChange={(event) => setDetailsForm((previous) => previous ? { ...previous, city: event.target.value } : previous)} required /></Field>
+              <Field label="State"><Input value={detailsForm.state} disabled={!detailsEditMode} onChange={(event) => setDetailsForm((previous) => previous ? { ...previous, state: event.target.value } : previous)} required /></Field>
+              <Field label="Pincode"><Input value={detailsForm.pincode} disabled={!detailsEditMode} onChange={(event) => setDetailsForm((previous) => previous ? { ...previous, pincode: event.target.value } : previous)} required /></Field>
+              <Field label="Timezone"><Input value={detailsForm.timezone} disabled={!detailsEditMode} onChange={(event) => setDetailsForm((previous) => previous ? { ...previous, timezone: event.target.value } : previous)} required /></Field>
+              <Field label="Contact Email"><Input type="email" value={detailsForm.contactEmail || ''} disabled={!detailsEditMode} onChange={(event) => setDetailsForm((previous) => previous ? { ...previous, contactEmail: event.target.value } : previous)} /></Field>
+            </div>
+
+            {detailsEditMode ? (
+              <div className="flex justify-end">
+                <Button type="submit" disabled={detailsBusy}>{detailsBusy ? 'Saving...' : 'Save Details'}</Button>
+              </div>
+            ) : null}
+          </form>
+
+          <div className="mt-5 border-t border-slate-200 pt-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Table QR Codes</div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" onClick={() => void loadRestaurantQrs()} disabled={detailsBusy}>{detailsBusy ? 'Loading...' : 'Load QRs'}</Button>
+                <Button type="button" onClick={() => void downloadQrBatch()} disabled={detailsBusy}>{detailsBusy ? 'Preparing...' : 'Download All (ZIP)'}</Button>
+              </div>
+            </div>
+
+            {detailsQrItems.length > 0 ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {detailsQrItems.map((item) => (
                   <div key={item.tableId} className="rounded-2xl border border-slate-200 p-3">
                     <div className="text-sm font-medium text-slate-900">Table {item.tableNumber}</div>
                     <div className="text-xs text-slate-500">{item.floor}</div>
@@ -431,24 +597,10 @@ export function PlatformRestaurantsScreen({ state, onOpenRestaurant, onToggleRes
                   </div>
                 ))}
               </div>
-
-              <div className="flex justify-end">
-                <Button type="button" onClick={() => setOnboardStep(7)} disabled={qrItems.length === 0}>Continue to Admin Credentials</Button>
-              </div>
-            </div>
-          ) : null}
-
-          {onboardStep === 7 ? (
-            <form className="space-y-3" onSubmit={createAdminCredentials}>
-              <Field label="Admin Name"><Input value={adminName} onChange={(event) => setAdminName(event.target.value)} required /></Field>
-              <Field label="Admin Email"><Input type="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} required /></Field>
-              {adminResult ? <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{adminResult}</div> : null}
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="ghost" onClick={() => setOnboardStep(6)}>Back</Button>
-                <Button type="submit" disabled={busyAction || !draftRestaurant}>{busyAction ? 'Creating...' : 'Create Admin & Send Email'}</Button>
-              </div>
-            </form>
-          ) : null}
+            ) : (
+              <div className="text-sm text-slate-600">Load QRs to preview and download individual table codes.</div>
+            )}
+          </div>
         </ModalShell>
       ) : null}
     </Card>

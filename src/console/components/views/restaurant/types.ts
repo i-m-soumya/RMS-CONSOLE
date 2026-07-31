@@ -1,4 +1,4 @@
-import type { Restaurant, Role } from '../../../types';
+import type { Restaurant, Role, ViewId } from '../../../types';
 
 export interface RestaurantScreenProps {
   role: Role;
@@ -8,4 +8,5 @@ export interface RestaurantScreenProps {
   onRejectOrder: (orderId: string) => void;
   onMarkBillPaid: (billId: string) => void;
   onToggleItemAvailability: (itemId: string) => void;
+  onNavigate: (view: ViewId) => void;
 }

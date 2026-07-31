@@ -65,6 +65,17 @@ export interface OnboardBasicDetailsPayload {
   contactEmail?: string;
 }
 
+export interface UpdateRestaurantBasicDetailsPayload {
+  name?: string;
+  slug?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  timezone?: string;
+  contactEmail?: string;
+}
+
 export interface FloorTableInput {
   tableNumber: string;
   capacity: number;
@@ -257,6 +268,15 @@ class AuthApiClient {
       body: JSON.stringify(payload),
     });
     const parsed = await this.parseJsonResponse<{ data: { id: string; slug: string; name: string } }>(response);
+    return parsed.data;
+  }
+
+  async updateRestaurantBasicDetails(restaurantId: string, payload: UpdateRestaurantBasicDetailsPayload) {
+    const response = await this.fetch(`${API_BASE}/api/platform/restaurants/${restaurantId}/basic-details`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    const parsed = await this.parseJsonResponse<{ data: { id: string } }>(response);
     return parsed.data;
   }
 

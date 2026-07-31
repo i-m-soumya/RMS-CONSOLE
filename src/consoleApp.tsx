@@ -258,6 +258,13 @@ export default function ConsoleApp() {
     }
   }
 
+  function openRestaurantById(restaurantId: string) {
+    const restaurant = state.data.restaurants.find((entry) => entry.id === restaurantId);
+    if (restaurant) {
+      pushNotification(`Opened details for ${restaurant.name}.`, 'platform');
+    }
+  }
+
   function approveChangeRequest(restaurantSlug: string, requestId: string) {
     patchRestaurant(restaurantSlug, (restaurant) => ({
       ...restaurant,
@@ -419,10 +426,12 @@ export default function ConsoleApp() {
             view={guardedView}
             state={state.data}
             unreadCount={unreadCount}
-            onOpenRestaurant={() => {}}
+            onOpenRestaurant={openRestaurantById}
             onToggleRestaurantStatus={toggleRestaurantStatus}
             onApproveRequest={approveChangeRequest}
             onRejectRequest={rejectChangeRequest}
+            onNavigate={setView}
+            onOpenNotifications={() => setNotificationsOpen(true)}
           />
         ) : currentRestaurant ? (
           <RestaurantViews
@@ -435,6 +444,7 @@ export default function ConsoleApp() {
             onRejectOrder={rejectOrder}
             onMarkBillPaid={markBillPaid}
             onToggleItemAvailability={toggleItemAvailability}
+            onNavigate={setView}
           />
         ) : null}
       </AppFrame>

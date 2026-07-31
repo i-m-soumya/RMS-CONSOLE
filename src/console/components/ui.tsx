@@ -22,19 +22,35 @@ export function CardHeader({ title, subtitle, action }: { title: string; subtitl
   );
 }
 
-export function StatCard({ label, value, hint, icon: Icon }: { label: string; value: string; hint?: string; icon: LucideIcon }) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{value}</p>
-          {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-700">
-          <Icon size={18} />
-        </div>
+export function StatCard({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  icon: LucideIcon;
+  onClick?: () => void;
+}) {
+  const content = (
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+        <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{value}</p>
+        {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
       </div>
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-700">
+        <Icon size={18} />
+      </div>
+    </div>
+  );
+
+  return (
+    <Card className={`p-4 ${onClick ? 'cursor-pointer transition hover:border-blue-300 hover:bg-blue-50/40' : ''}`.trim()}>
+      {onClick ? <button type="button" className="block w-full text-left" onClick={onClick}>{content}</button> : content}
     </Card>
   );
 }
