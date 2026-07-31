@@ -32,6 +32,69 @@ export interface StoredAuthSession {
   expiresAt: number;
 }
 
+export interface PlatformRestaurantListItem {
+  id: string;
+  name: string;
+  slug: string;
+  status: 'active' | 'suspended';
+  tableCount: number;
+  onboardedAt: string;
+  city: string;
+  state?: string;
+  pincode?: string;
+  timezone: string;
+  address?: string;
+}
+
+export interface RestaurantListFilters {
+  q?: string;
+  status?: 'active' | 'suspended';
+  city?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface OnboardBasicDetailsPayload {
+  name: string;
+  slug: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  timezone: string;
+  contactEmail?: string;
+}
+
+export interface FloorTableInput {
+  tableNumber: string;
+  capacity: number;
+}
+
+export interface FloorInput {
+  name: string;
+  tables: FloorTableInput[];
+}
+
+export interface TableQrArtifact {
+  tableId: string;
+  tableNumber: string;
+  floor: string;
+  qrPayload: string;
+  qrDataUrl: string;
+  filename: string;
+}
+
+export interface CreateAdminCredentialsPayload {
+  name: string;
+  email: string;
+  tempPassword?: string;
+}
+
+export interface BatchQrZipResult {
+  filename: string;
+  blob: Blob;
+}
+
 class AuthApiClient {
   private storedSession: StoredAuthSession | null = null;
 
@@ -163,6 +226,95 @@ class AuthApiClient {
   async fetch(url: string, options?: RequestInit): Promise<Response> {
     const headers = { ...this.getAuthHeaders(), ...options?.headers };
     return fetch(url, { ...options, headers });
+  }
+
+  private async parseJsonResponse<T>(response: Response): Promise<T> {
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || error.message || 'Request failed');
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  async listPlatformRestaurants(filters: RestaurantListFilters = {}) {
+    const params = new URLSearchParams();
+    if (filters.q) params.set('q', filters.q);
+    if (filters.status) params.set('status', filters.status);
+    if (filters.city) params.set('city', filters.city);
+    if (filters.page) params.set('page', String(filters.page));
+    if (filters.pageSize) params.set('pageSize', String(filters.pageSize));
+
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    const response = await this.fetch(`${API_BASE}/api/platform/restaurants${suffix}`);
+    const parsed = await this.parseJsonResponse<{ data: PlatformRestaurantListItem[] }>(response);
+    return parsed.data;
+  }
+
+  async createRestaurantBasicDetails(payload: OnboardBasicDetailsPayload) {
+    const response = await this.fetch(`${API_BASE}/api/platform/restaurants`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const parsed = await this.parseJsonResponse<{ data: { id: string; slug: string; name: string } }>(response);
+    return parsed.data;
+  }
+
+  async saveFloorsAndTables(restaurantId: string, floors: FloorInput[]) {
+    const response = await this.fetch(`${API_BASE}/api/platform/restaurants/${restaurantId}/floors-and-tables`, {
+      method: 'PUT',
+      body: JSON.stringify({ floors }),
+    });
+    const parsed = await this.parseJsonResponse<{ data: { floorCount: number; tableCount: number } }>(response);
+    return parsed.data;
+  }
+
+  async generateRestaurantQRCodes(restaurantId: string) {
+    const response = await this.fetch(`${API_BASE}/api/platform/restaurants/${restaurantId}/qr-codes/generate`, {
+      method: 'POST',
+    });
+    const parsed = await this.parseJsonResponse<{ data: { items: TableQrArtifact[] } }>(response);
+    return parsed.data.items;
+  }
+
+  async getRestaurantQrBatch(restaurantId: string) {
+    const response = await this.fetch(`${API_BASE}/api/platform/restaurants/${restaurantId}/qr-codes/batch`);
+    const parsed = await this.parseJsonResponse<{ data: { items: TableQrArtifact[] } }>(response);
+    return parsed.data.items;
+  }
+
+  async downloadRestaurantQrBatchZip(restaurantId: string): Promise<BatchQrZipResult> {
+    const response = await this.fetch(`${API_BASE}/api/platform/restaurants/${restaurantId}/qr-codes/batch-download`);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || error.message || 'Failed to download batch QR zip');
+    }
+
+    const contentDisposition = response.headers.get('content-disposition') || '';
+    const matched = /filename="([^"]+)"/.exec(contentDisposition);
+    const filename = matched?.[1] || `restaurant-${restaurantId}-qrs.zip`;
+
+    return {
+      filename,
+      blob: await response.blob(),
+    };
+  }
+
+  async createRestaurantAdminCredentials(restaurantId: string, payload: CreateAdminCredentialsPayload) {
+    const response = await this.fetch(`${API_BASE}/api/platform/restaurants/${restaurantId}/admin-credentials`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const parsed = await this.parseJsonResponse<{
+      data: {
+        staffId: string;
+        email: string;
+        role: 'restaurant_admin';
+        tempPassword: string;
+        emailDelivery: { sent: boolean; messageId: string | null; transport: string };
+      };
+    }>(response);
+    return parsed.data;
   }
 }
 

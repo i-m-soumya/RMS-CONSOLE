@@ -44,8 +44,34 @@ import type {
 import { Button, Pill } from './console/components/ui';
 import { authApiClient } from './console/authApi';
 
+const RESTAURANT_NAV: NavItem[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'tables', label: 'Tables & Sessions', icon: Table2 },
+  { id: 'orders', label: 'Orders', icon: PackageSearch },
+  { id: 'billing', label: 'Bills & Payments', icon: Wallet },
+  { id: 'menu', label: 'Menu', icon: Soup },
+  { id: 'staff', label: 'Staff', icon: UserCog },
+  { id: 'reports', label: 'Reports', icon: Star },
+  { id: 'settings', label: 'Settings', icon: Settings2 },
+  { id: 'kitchen', label: 'Kitchen Display', icon: UtensilsCrossed },
+  { id: 'availability', label: 'Availability', icon: Link2 },
+  { id: 'shift-history', label: 'Shift History', icon: RefreshCw },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
+];
+
+const PLATFORM_NAV: NavItem[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'restaurants', label: 'Restaurants', icon: Store },
+  { id: 'change-requests', label: 'Change Requests', icon: RefreshCw },
+  { id: 'qr-codes', label: 'QR Codes', icon: DatabaseZap },
+  { id: 'contacts', label: 'Contact Queries', icon: MessageSquareWarning },
+  { id: 'registrations', label: 'Registrations', icon: Users },
+  { id: 'analytics', label: 'Analytics', icon: Star },
+  { id: 'settings', label: 'Settings', icon: Settings2 },
+];
+
 function useConsoleState() {
-  const stored = useMemo(loadStoredState, []);
+  const stored = useMemo(() => loadStoredState(), []);
   const [state, setState] = useState<StoredState>(() => stored ?? { auth: null, data: seedAppState() });
 
   useEffect(() => {
@@ -99,45 +125,19 @@ export default function ConsoleApp() {
     bootAuth();
   }, [setState]);
 
-  const restaurantNav: NavItem[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'tables', label: 'Tables & Sessions', icon: Table2 },
-    { id: 'orders', label: 'Orders', icon: PackageSearch },
-    { id: 'billing', label: 'Bills & Payments', icon: Wallet },
-    { id: 'menu', label: 'Menu', icon: Soup },
-    { id: 'staff', label: 'Staff', icon: UserCog },
-    { id: 'reports', label: 'Reports', icon: Star },
-    { id: 'settings', label: 'Settings', icon: Settings2 },
-    { id: 'kitchen', label: 'Kitchen Display', icon: UtensilsCrossed },
-    { id: 'availability', label: 'Availability', icon: Link2 },
-    { id: 'shift-history', label: 'Shift History', icon: RefreshCw },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-  ];
-
-  const platformNav: NavItem[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'restaurants', label: 'Restaurants', icon: Store },
-    { id: 'change-requests', label: 'Change Requests', icon: RefreshCw },
-    { id: 'qr-codes', label: 'QR Codes', icon: DatabaseZap },
-    { id: 'contacts', label: 'Contact Queries', icon: MessageSquareWarning },
-    { id: 'registrations', label: 'Registrations', icon: Users },
-    { id: 'analytics', label: 'Analytics', icon: Star },
-    { id: 'settings', label: 'Settings', icon: Settings2 },
-  ];
-
   const navItems = useMemo(() => {
     if (!auth) return [];
-    if (auth.access === 'platform') return platformNav;
+    if (auth.access === 'platform') return PLATFORM_NAV;
 
     if (auth.role === 'chef') {
-      return restaurantNav.filter((item) => ['dashboard', 'kitchen', 'availability', 'shift-history', 'notifications'].includes(item.id));
+      return RESTAURANT_NAV.filter((item) => ['dashboard', 'kitchen', 'availability', 'shift-history', 'notifications'].includes(item.id));
     }
 
     if (auth.role === 'waiter') {
-      return restaurantNav.filter((item) => ['dashboard', 'tables', 'orders', 'billing', 'notifications'].includes(item.id));
+      return RESTAURANT_NAV.filter((item) => ['dashboard', 'tables', 'orders', 'billing', 'notifications'].includes(item.id));
     }
 
-    return restaurantNav.filter((item) => ['dashboard', 'tables', 'orders', 'billing', 'menu', 'staff', 'reports', 'settings', 'notifications'].includes(item.id));
+    return RESTAURANT_NAV.filter((item) => ['dashboard', 'tables', 'orders', 'billing', 'menu', 'staff', 'reports', 'settings', 'notifications'].includes(item.id));
   }, [auth]);
 
   // Get permitted view IDs for current role
@@ -161,11 +161,6 @@ export default function ConsoleApp() {
 
   // Guard view access - redirect to dashboard if disallowed
   const guardedView = auth && !getPermittedViews(auth).includes(view) ? 'dashboard' : view;
-
-  useEffect(() => {
-    if (!auth) return;
-    setView('dashboard');
-  }, [auth]);
 
   function setNotificationRead(notificationId: string) {
     setState((previous) => ({
