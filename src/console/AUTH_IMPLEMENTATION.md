@@ -9,7 +9,7 @@ The RMS console app has been fully integrated with backend JWT authentication. T
 ### Frontend (e:/Projects/OwnProjects/RMS/console)
 
 1. **Environment Configuration** (`.env`)
-   - `VITE_API_URL=https://rms-backend-production-e1d3.up.railway.app`
+   - `VITE_API_URL=https://rms-backend-production-b08f.up.railway.app`
    - Change to `http://localhost:5000` for local development
 
 2. **Auth API Client** (`src/console/authApi.ts`)

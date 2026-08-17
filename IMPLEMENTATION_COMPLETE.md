@@ -185,7 +185,7 @@ Backend: ✅ VALID
 | Variable | Value | Notes |
 |----------|-------|-------|
 | `VITE_API_URL` | `http://localhost:5000` | Local development |
-| `VITE_API_URL` | `https://rms-backend-production-e1d3.up.railway.app` | Production |
+| `VITE_API_URL` | `https://rms-backend-production-b08f.up.railway.app` | Production |
 | JWT_SECRET | (from env) | On backend; default 'rms-dev-secret-change-in-prod' |
 | Access Token TTL | 15 minutes | In jwt.js |
 | Refresh Token TTL | 7 days | In jwt.js |

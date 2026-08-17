@@ -22,8 +22,8 @@ Create a `.env` file in the project root (copy from `.env.example`):
 ```env
 # Backend API root URL
 # For local development: http://localhost:5000
-# For production: https://rms-backend-production-e1d3.up.railway.app
-VITE_API_URL=https://rms-backend-production-e1d3.up.railway.app
+# For production: https://rms-backend-production-b08f.up.railway.app
+VITE_API_URL=https://rms-backend-production-b08f.up.railway.app
 ```
 
 The backend API URL is used for all authentication and data API calls. Ensure the backend service is running and accessible at this URL.
