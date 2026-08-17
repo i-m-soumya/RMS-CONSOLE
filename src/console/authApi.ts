@@ -3,7 +3,14 @@
  * Centralizes all backend auth communication, token management, and HTTP header injection
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const OLD_PRODUCTION_API_BASE = 'https://rms-backend-production-e1d3.up.railway.app';
+const NEW_PRODUCTION_API_BASE = 'https://rms-backend-production-b08f.up.railway.app';
+
+const configuredApiBase = (import.meta.env.VITE_API_URL || '').trim();
+
+const API_BASE = configuredApiBase === OLD_PRODUCTION_API_BASE
+  ? NEW_PRODUCTION_API_BASE
+  : (configuredApiBase || NEW_PRODUCTION_API_BASE);
 const STORAGE_KEY = 'rms-console-auth-v1';
 
 export interface LoginPayload {
