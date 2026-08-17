@@ -106,6 +106,99 @@ export interface BatchQrZipResult {
   blob: Blob;
 }
 
+export interface AdminMenuCategory {
+  id: string;
+  name: string;
+  description: string | null;
+  image_url: string | null;
+  display_order: number;
+  is_active: boolean;
+  item_count: number;
+}
+
+export interface AdminMenuItemCategory {
+  id: string;
+  name: string;
+  is_primary_category: boolean;
+}
+
+export interface AdminMenuItem {
+  id: string;
+  name: string;
+  description: string | null;
+  mrp: number;
+  price: number;
+  discount_amount: number;
+  discount_percentage: number;
+  image_url: string | null;
+  item_type: 'regular' | 'scheduled' | 'combo' | 'addon_only';
+  dietary_type: 'veg' | 'non_veg' | 'vegan' | 'contains_egg';
+  spice_level: 'none' | 'mild' | 'medium' | 'hot' | 'extra_hot' | null;
+  is_available: boolean;
+  is_featured: boolean;
+  categories: AdminMenuItemCategory[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminMenuItemsResponse {
+  data: AdminMenuItem[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface ListAdminMenuItemsFilters {
+  search?: string;
+  category_id?: string;
+  dietary_type?: 'veg' | 'non_veg' | 'vegan' | 'contains_egg';
+  item_type?: 'regular' | 'scheduled' | 'combo' | 'addon_only';
+  is_available?: 'true' | 'false';
+  page?: number;
+  limit?: number;
+  sort_by?: 'name' | 'price' | 'created_at';
+  sort_dir?: 'asc' | 'desc';
+}
+
+export interface AdminMenuItemPayload {
+  name: string;
+  description?: string | null;
+  category_ids: string[];
+  primary_category_id?: string;
+  mrp: number;
+  price: number;
+  image_url?: string | null;
+  item_type: 'regular' | 'scheduled' | 'combo' | 'addon_only';
+  dietary_type: 'veg' | 'non_veg' | 'vegan' | 'contains_egg';
+  spice_level?: 'none' | 'mild' | 'medium' | 'hot' | 'extra_hot' | null;
+  is_available: boolean;
+}
+
+export interface AdminStaffListItem {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  profile_photo_url: string | null;
+  role: 'waiter' | 'chef' | 'restaurant_admin' | 'brand_admin';
+  access: 'active' | 'revoked';
+  last_login_at: string | null;
+  failed_login_attempts: number;
+  locked_until: string | null;
+  is_online: boolean;
+  session_status: 'online' | 'offline';
+}
+
+export interface CreateStaffPayload {
+  name: string;
+  email: string;
+  phone?: string | null;
+  role: 'waiter' | 'chef';
+}
+
 class AuthApiClient {
   private storedSession: StoredAuthSession | null = null;
 
@@ -335,6 +428,153 @@ class AuthApiClient {
       };
     }>(response);
     return parsed.data;
+  }
+
+  async listAdminMenuCategories() {
+    const response = await this.fetch(`${API_BASE}/api/admin/menu/categories`);
+    const parsed = await this.parseJsonResponse<{ data: AdminMenuCategory[] }>(response);
+    return parsed.data;
+  }
+
+  async createAdminMenuCategory(payload: {
+    name: string;
+    description?: string;
+    image_url?: string;
+    display_order?: number;
+  }) {
+    const response = await this.fetch(`${API_BASE}/api/admin/menu/categories`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const parsed = await this.parseJsonResponse<{ data: AdminMenuCategory }>(response);
+    return parsed.data;
+  }
+
+  async updateAdminMenuCategory(id: string, payload: {
+    name?: string;
+    description?: string | null;
+    image_url?: string | null;
+  }) {
+    const response = await this.fetch(`${API_BASE}/api/admin/menu/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    const parsed = await this.parseJsonResponse<{ data: AdminMenuCategory }>(response);
+    return parsed.data;
+  }
+
+  async reorderAdminMenuCategories(order: string[]) {
+    const response = await this.fetch(`${API_BASE}/api/admin/menu/categories/reorder`, {
+      method: 'PATCH',
+      body: JSON.stringify({ order }),
+    });
+    return this.parseJsonResponse<{ success: boolean }>(response);
+  }
+
+  async deleteAdminMenuCategory(id: string) {
+    const response = await this.fetch(`${API_BASE}/api/admin/menu/categories/${id}`, {
+      method: 'DELETE',
+    });
+    return this.parseJsonResponse<{ success: boolean }>(response);
+  }
+
+  async listAdminMenuItems(filters: ListAdminMenuItemsFilters = {}) {
+    const params = new URLSearchParams();
+    if (filters.search) params.set('search', filters.search);
+    if (filters.category_id) params.set('category_id', filters.category_id);
+    if (filters.dietary_type) params.set('dietary_type', filters.dietary_type);
+    if (filters.item_type) params.set('item_type', filters.item_type);
+    if (filters.is_available) params.set('is_available', filters.is_available);
+    if (filters.page) params.set('page', String(filters.page));
+    if (filters.limit) params.set('limit', String(filters.limit));
+    if (filters.sort_by) params.set('sort_by', filters.sort_by);
+    if (filters.sort_dir) params.set('sort_dir', filters.sort_dir);
+
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    const response = await this.fetch(`${API_BASE}/api/admin/menu/items${suffix}`);
+    return this.parseJsonResponse<AdminMenuItemsResponse>(response);
+  }
+
+  async createAdminMenuItem(payload: AdminMenuItemPayload) {
+    const response = await this.fetch(`${API_BASE}/api/admin/menu/items`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const parsed = await this.parseJsonResponse<{ data: AdminMenuItem }>(response);
+    return parsed.data;
+  }
+
+  async updateAdminMenuItem(id: string, payload: Partial<AdminMenuItemPayload>) {
+    const response = await this.fetch(`${API_BASE}/api/admin/menu/items/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    const parsed = await this.parseJsonResponse<{ data: AdminMenuItem }>(response);
+    return parsed.data;
+  }
+
+  async deleteAdminMenuItem(id: string) {
+    const response = await this.fetch(`${API_BASE}/api/admin/menu/items/${id}`, {
+      method: 'DELETE',
+    });
+    return this.parseJsonResponse<{ success: boolean }>(response);
+  }
+
+  async setAdminMenuItemAvailability(id: string, is_available: boolean) {
+    const response = await this.fetch(`${API_BASE}/api/admin/menu/items/${id}/availability`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_available }),
+    });
+    return this.parseJsonResponse<{ success: boolean; is_available: boolean }>(response);
+  }
+
+  async uploadAdminMenuItemPhoto(image_data_url: string) {
+    const response = await this.fetch(`${API_BASE}/api/admin/menu/items/upload-photo`, {
+      method: 'POST',
+      body: JSON.stringify({ image_data_url }),
+    });
+    const parsed = await this.parseJsonResponse<{ data: { image_url: string } }>(response);
+    return parsed.data;
+  }
+
+  async listAdminStaff(filters: {
+    role?: 'waiter' | 'chef';
+    access?: 'active' | 'revoked';
+    search?: string;
+  } = {}) {
+    const params = new URLSearchParams();
+    if (filters.role) params.set('role', filters.role);
+    if (filters.access) params.set('access', filters.access);
+    if (filters.search) params.set('search', filters.search);
+
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    const response = await this.fetch(`${API_BASE}/api/admin/staff${suffix}`);
+    const parsed = await this.parseJsonResponse<{ data: AdminStaffListItem[] }>(response);
+    return parsed.data;
+  }
+
+  async createAdminStaff(payload: CreateStaffPayload) {
+    const response = await this.fetch(`${API_BASE}/api/admin/staff`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const parsed = await this.parseJsonResponse<{ data: { id: string; email: string; role: string; invite_sent: boolean } }>(response);
+    return parsed.data;
+  }
+
+  async updateAdminStaffAccess(id: string, access: 'active' | 'revoked') {
+    const response = await this.fetch(`${API_BASE}/api/admin/staff/${id}/access`, {
+      method: 'PATCH',
+      body: JSON.stringify({ access }),
+    });
+    return this.parseJsonResponse<{ success: boolean; access: 'active' | 'revoked' }>(response);
+  }
+
+  async resendAdminStaffCredentials(id: string) {
+    const response = await this.fetch(`${API_BASE}/api/admin/staff/${id}/resend-credentials`, {
+      method: 'POST',
+    });
+    return this.parseJsonResponse<{ success: boolean; invite_sent: boolean }>(response);
   }
 }
 

@@ -137,7 +137,7 @@ export default function ConsoleApp() {
       return RESTAURANT_NAV.filter((item) => ['dashboard', 'tables', 'orders', 'billing', 'notifications'].includes(item.id));
     }
 
-    return RESTAURANT_NAV.filter((item) => ['dashboard', 'tables', 'orders', 'billing', 'menu', 'staff', 'reports', 'settings', 'notifications'].includes(item.id));
+    return RESTAURANT_NAV.filter((item) => ['dashboard', 'tables', 'orders', 'billing', 'menu', 'staff', 'reports', 'settings', 'kitchen', 'notifications'].includes(item.id));
   }, [auth]);
 
   // Get permitted view IDs for current role
@@ -156,7 +156,7 @@ export default function ConsoleApp() {
     }
 
     // admin
-    return ['dashboard', 'tables', 'orders', 'billing', 'menu', 'staff', 'reports', 'settings', 'notifications'];
+    return ['dashboard', 'tables', 'orders', 'billing', 'menu', 'staff', 'reports', 'settings', 'kitchen', 'notifications'];
   }
 
   // Guard view access - redirect to dashboard if disallowed
